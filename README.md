@@ -1,2 +1,79 @@
-# pihole-ansilbe-module
-Ansible module for Pi-Hole
+# Pihole Ansible Module
+
+This repo contains a custom Ansible collection for `pihole`.
+
+## Tested with Ansible
+Tested with the current ansible-core 2.16.x.
+Tested with Python 3.12.x. 
+
+Future versions will include previous version of both ansible-core and Python.
+
+## Included content
+* Pihole plugins:
+    - ansible_pihole: Manage Pi-Hole deployments
+
+## Using this collection
+
+Before using this collection, yo uwill need to clone the repository, and place the `ansible_pihole.py` file in the same directory
+as the playbook to be used, in a subdirectory title library
+
+```
+- site.yaml
+|
+|-library/
+    |
+    |-- ansible_pihole.py
+```
+
+## Available parameters
+
+The following parameters are available, at this point in development all parameters are set to required=false
+
+* update_pihole:
+    - true/false
+        - Default: false
+    - Effective to `pihole -up`
+* update_gravity:
+    - true/false
+        - Default: false
+    - Effective to `pihole -g`
+* flush_log:
+    - true/false
+        - default: false
+    - Effective to `pihole -f`
+* restart_dns:
+    - true/false
+        - default: false
+    - Effective to `pihole restartdns`
+* blacklist:
+    - str
+    - Effective to `pihole blacklist <domain>`
+* whitelist:
+    - str
+    - Effective to `pihole whitelist <domain>`
+* enable_pihole:
+    - true/false
+        - default: true
+    - Effective to `pihole enable(disable)`
+
+## Examples
+
+```
+- name: Update Pi-Hole and Gravity if needed
+  ansible_pihole:
+    update_pihole: true
+    update_gravity: true
+```
+
+```
+- name: Disable Pi-Hole ad blocking
+  ansible_pihole:
+    pihole_enable: false
+```
+
+```
+- name: Enable Pi-Hole ad blocking and flush logs
+  ansible_pihole:
+    pihole_enable: true
+    flush_log: true
+```
