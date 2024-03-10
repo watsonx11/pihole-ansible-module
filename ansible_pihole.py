@@ -4,7 +4,6 @@
 # GNU General Public License v3.0+ (see LICENSES/GPL-3.0-or-later.txt or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 import subprocess
-import re
 from ansible.module_utils.basic import AnsibleModule
 
 DOCUMENTATION = r'''
@@ -14,10 +13,15 @@ short_description: Manage Pi-hole settings and lists via Ansible
 version_added: "1.0.0"
 author: "Sean Watson"
 description:
-    - This module provides automation for managing Pi-holle settings and lists directly from Ansible playbooks
-    - It allows for updating Pi-hole, its gravity database, flushing logs, restarting DNS, modifying the blacklist and whitelist, and toggling Pi-hole's operational state.
+  - This module provides automation for managing Pi-hole settings and lists directly from Ansible playbooks
+  - It allows for updating Pi-hole, its gravity database, flushing logs, restarting DNS, modifying the blacklist and whitelist, and toggling Pi-hole's operational state.
 options:
-    update_pihole:
+  pihole_path:
+    description: Option to state pihole cmd path if not in standard location
+    type: str
+    required: False
+    default: pihole
+  update_pihole:
     description: Whether to update Pi-hole to the latest version.
     type: bool
     required: False
@@ -67,9 +71,6 @@ license: GNU General Public License v3.0+ (see LICENSES/GPL-3.0-or-later.txt or 
 '''
 
 EXAMPLES = '''
-
-# The examples are using the module pihole:, this is the name of the .py you have called it in the ./library/ directory
-
 - name: Disable Pi-Hole ad blocking
   pihole:
     enable_pihole: false
@@ -80,19 +81,26 @@ EXAMPLES = '''
 
 - name: Add sites to Blacklist
   pihole:
-    blacklist: '{{ item.url }}
+    blacklist: '{{ item.url }}'
   loop:
     - { url: 'example.com' }
     - { url: 'foo.bar' }
+
+- name: Update Pi-Hole w/ non-standard pihole path
+  pihole:
+    pihole_path: /path/to/pihole
+    update_pihole: true
 '''
 
 def execute_command(command):
     try:
-        result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        return True, result.stdout
+        result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        output = result.stdout.strip()
+        # Just return the output; don't assume a change
+        return {'success': True, 'msg': output}
     except subprocess.CalledProcessError as e:
-        # Including both stdout and stderr for comprehensive debugging information
-        return False, f"STDOUT: {e.stdout}\nSTDERR: {e.stderr}"
+        error_msg = f"Command '{' '.join(command)}' failed. STDOUT: {e.stdout}, STDERR: {e.stderr}"
+        return {'success': False, 'failed': True, 'msg': error_msg}
 
 def main():
 
@@ -101,7 +109,8 @@ def main():
         "up to date",
         "list stayed unchanged",
         "blocking already enabled",
-        "blocking already disabled"
+        "blocking already disabled",
+        "everything is up to date"
     ]
 
     blacklist_no_update_phrases = [
@@ -114,6 +123,7 @@ def main():
 
     module = AnsibleModule(
         argument_spec={
+            'pihole_path': {'type': 'str', 'required': False, 'default': 'pihole'},
             'update_pihole': {'type': 'bool', 'required': False, 'default': False},
             'update_gravity': {'type': 'bool', 'required': False, 'default': False},
             'flush_log': {'type': 'bool', 'required': False, 'default': False},
@@ -125,39 +135,32 @@ def main():
         }
     )
 
-    pihole_cmd = "pihole"
+    pihole_cmd = module.params['pihole_path']
     commands = []
-    # Update Pihole if new version exists
+    # Construct commands based on parameters
     if module.params['update_pihole']:
         commands.append(("Pi-hole update", [pihole_cmd, "-up"]))
 
-    # Update Blocklist Database
     if module.params['update_gravity']:
         commands.append(("Gravity update", [pihole_cmd, "-g"]))
 
-    # Flush all DNS Logs
     if module.params['flush_log']:
         commands.append(("Log flush", [pihole_cmd, "-f"]))
 
-    # Restart DNS
     if module.params['restart_dns']:
         commands.append(("DNS restart", [pihole_cmd, "restartdns"]))
 
-    # Blacklist Domains
     if module.params['blacklist']:
         commands.append(("Blocking Domain", [pihole_cmd, "blacklist", module.params['blacklist']]))
 
-    # Whitelist domains
     if module.params['whitelist']:
         commands.append(("Whitelisting Domain", [pihole_cmd, "whitelist", module.params['whitelist']]))
 
-    # Enable / disable Pihole
     if module.params['enable_pihole']:
         commands.append(("Pi-Hole enabled", [pihole_cmd, "enable"]))
     elif module.params['enable_pihole'] is False:
         commands.append(("Pi-Hole disabled", [pihole_cmd, "disable"]))
 
-    # Change Web-Admin Password
     if module.params['admin_pwd']:
         commands.append(("Changing Web Admin Password", [pihole_cmd, "-a", "-p", module.params['admin_pwd']]))
 
@@ -165,22 +168,19 @@ def main():
     changed = False
 
     for description, command in commands:
-        success, output = execute_command(command)
-        if success:
-            if any(phrase in output.lower() for phrase in no_update_phrases):
+        result = execute_command(command)
+        if result['success']:
+            output = result['msg'].lower()  # Consider case-insensitive comparison
+            # Check if output indicates a change or not
+            if any(phrase in output for phrase in no_update_phrases):
                 messages.append(f"{description}: No update was necessary.")
-            elif any(phrase in output.lower() for phrase in blacklist_no_update_phrases):
-                messages.append(f"{description} ({module.params['blacklist']}): Domain already blocked.")
-            elif any(phrase in output.lower() for phrase in whitelist_no_update_phrases):
-                messages.append(f"{description} ({module.params['whitelist']}): Domain already allowed.")
             else:
-                messages.append(f"{description}: {output.strip()}")
-                changed = True  # Mark as changed if any command produces an actionable output
+                messages.append(f"{description}: {result['msg'].strip()}")
+                changed = True
         else:
-            module.fail_json(msg=f"{description} failed: {output}")
+            module.fail_json(msg=f"{description} failed: {result['msg']}")
 
-    final_message = "\n".join(messages)
-    module.exit_json(changed=changed, msg=final_message)
+    module.exit_json(changed=changed, msg="\n".join(messages))
 
 if __name__ == '__main__':
     main()
