@@ -29,6 +29,10 @@ as the playbook to be used, in a subdirectory title library
 
 The following parameters are available, at this point in development all parameters are set to required=false
 
+* pihole_path:
+    - str
+        - Default: `pihole`
+    - Allows the user to set the non-standard path for the pihole command
 * update_pihole:
     - true/false
         - Default: false
@@ -55,6 +59,9 @@ The following parameters are available, at this point in development all paramet
     - true/false
         - default: true
     - Effective to `pihole enable(disable)`
+* admin_pwd:
+    - str
+    - Effective to `pihole -a -p <password>`
 
 ## Examples
 
@@ -76,4 +83,11 @@ The following parameters are available, at this point in development all paramet
   ansible_pihole:
     pihole_enable: true
     flush_log: true
+```
+
+```
+- name: Change Web Admin Password w/ non-standard pihole path
+  ansible_pihole:
+    pihole_path: /path/to/pihole
+    admin_pwd: '{{ admin_password }}'
 ```
